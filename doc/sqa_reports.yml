@@ -1,0 +1,6 @@
+Applications:
+    wolf:
+        app_types:
+            - WolfApp
+        content_directory: ${ROOT_DIR}/doc/content
+        log_default: WARNING
