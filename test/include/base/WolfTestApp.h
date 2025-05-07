@@ -10,6 +10,7 @@
 #pragma once
 
 #include "MooseApp.h"
+#include "NavierStokesApp.h"
 
 class WolfTestApp : public MooseApp
 {

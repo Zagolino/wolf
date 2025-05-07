@@ -9,10 +9,12 @@
 
 #include "WolfTestApp.h"
 #include "MooseMain.h"
+#include "NavierStokesApp.h"
 
 // Begin the main program.
 int
 main(int argc, char * argv[])
 {
   return Moose::main<WolfTestApp>(argc, argv);
+  
 }
