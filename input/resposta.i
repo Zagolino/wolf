@@ -1,255 +1,374 @@
 
-[GlobalParams]
-    gravity = '0 -9.8 0'
-
-    order = FIRST
-    family = LAGRANGE
-
-    u = Vx
-    v = Vy
-    pressure = p
-    temperature = T 
-    eos = eos
-
-    p_int_by_parts = true
-[]  
+# Caso 1 - Pe=1
 
 
-#Geometria do domínio
+# Declaração de constantes --------------------------------------------------------
+
+# Propridades físicas da água 
+mu = 0.001  # Viscosidade dinâmica
+rho = 1000     # Densidade
+cp = 4186   # Calor específico
+k = 0.6     # condutividade térmica
+
+# Condições de contorno referentes à transferência de calor
+
+T_left = 300 # Temperatura na parede
+T_right = 350 # Temperatura na parede
+
+
+
+# Definição da malha ---------------------------------------------------------------
+
+# Malha bidimensional retangular
 [Mesh]
-    [placa] #Vai ser um retângulo padrão
-      type = GeneratedMeshGenerator
-      dim = 2 #Bidimensional
-      nx = 20
-      ny = 10
-      xmax = 20
-      ymax = 10
-    []
-  
-[]
-  
-[NodalNormals]
-   
-    boundary = 'top bottom'
-    corner_boundary = 'corners'
-[]
-
-[FluidProperties]
-    [eos]
-        type = SimpleFluidProperties 
-        density0 = 100
-        thermal_expansion = 0.001
-        cp = 100
-        viscosity = 0.1
-        thermal_conductivity = 72
-    
+    [malha]
+        type = GeneratedMeshGenerator   
+        dim = 2         #bidimensional
+        xmin = 0        #Começo do canal
+        xmax = 0.5      #Comprimento do canal
+        ymin = -0.01    #Parede inferior
+        ymax = 0.01     #Parede superior
+        nx = 50         #Número de elementos em X
+        ny = 20         #Número de elementos em Y
     []
 []
-        
 
 
-#O que desejamos saber sobre as PDEs (Partial Differential Equations)
+# Definição das variáveis do problema -------------------------------------------------
+
 [Variables]
-    [T] #Temperatura - é o nosso objeto de estudo
 
-      initial_condition = 630 #Começa em 293.15K (~20ºC)
-      scaling = 1e-4
-    []
-    [Vy] #Velocidade em y
-        scaling = 1e-2
-        initial_condition = 1
-
-    []
-    [Vx] #Velocidade em x
-        scaling = 1e-1
-        initial_condition = 0
-
+    [u] # Velocidade em X
+        scaling = 1e0   # dimensionado para estabilidade numérica
     []
 
-    [p]
-        initial_condition = 1.01e5
+    [T] # Temperatura
+        initial_condition = 300 # Temperatura inicial em K
+        scaling = 1             # Sem dimencionamento
     []
-    
+
+    [p] # Pressão
+        scaling = 1e-5  # dimencionado para estabilidade numérica
+    []
+
+    [v] # Velocidade em Y
+        scaling = 1e-2  # dimencionado para estabilidade numérica
+    []
 []
 
 [AuxVariables]
-    [rho]
-        initial_condition = 77.0
+    [Pe_number]
+        family = MONOMIAL
+        order = CONSTANT
+    []
+    [speed_magnitude]
+        family = MONOMIAL
+        order = CONSTANT
+    []
+    [alpha_var]
+        family = MONOMIAL
+        order = CONSTANT
     []
 []
+
+
+# Atribuição das propriedades do fluído --------------------------------------------
 
 [Materials]
-    [mat]
-        type = INSFEMaterial
-        block = 0
+    [props]
+        type = GenericConstantMaterial
+        prop_names = 'rho mu cp k'
+        prop_values = '${rho} ${mu} ${cp} ${k}' # Usa valores atribuídos inicialmente
     []
+    [thermal_diffusivity]
+        type = GenericConstantMaterial
+        prop_names = 'alpha'
+        prop_values = '${fparse k/(rho*cp)}'
+    []
+    
 []
 
 
-#Representações dos operadores ou termos da forma fraca das PDEs
-[Kernels]
-    [massa]
-        type = INSFEFluidMassKernel
-        variable = p
+# Funções complementares do problema ------------------------------------------------
+
+
+[Functions]
+
+    [inlet_profile]                     # Perfil de velocidade na entrada
+        type = ParsedFunction
+        symbol_names = 'U_avg L'
+        symbol_values = '7.17e-5 0.01'
+        expression = '1.5 * U_avg * (1 - (y/L)^2)'  # Perfil parabólico
     []
 
-    [Mx]
-        type = INSFEFluidMomentumKernel
-        variable = Vx
-        component = 0
+    [T_wall_step]
+        type = PiecewiseConstant
+        axis = x
+        x = '0 0.25'
+        y = '${T_left} ${T_right}'
     []
 
-    [My]
-        type = INSFEFluidMomentumKernel
-        variable = Vy
-        component = 1
+[]
+
+
+# Condições iniciais ----------------------------------------------------------------
+
+[ICs]
+
+    [u_ic]  # Condição inicial para a velocidade em X
+        type = FunctionIC
+        variable = u
+        function = inlet_profile    # Utiliza o perfil de velocidade de Functions
     []
 
-    [Energia]
-        type = INSFEFluidEnergyKernel
-        variable = T
+    [v_ic]  # Condição inicial para a velocidade em Y
+        type = ConstantIC
+        variable = v
+        value = 1e-4    # Número pequeno diferente de zero para convergir melhor
     []
+
 []
 
 [AuxKernels]
-    [rho_aux]
-        type = FluidDensityAux
-        variable = rho
-        p = p
-        T = T
-        fp = eos
+    [compute_speed]
+        type = VectorMagnitudeAux
+        variable = speed_magnitude
+        x = u
+        y = v
+        z = 0
+        execute_on = 'TIMESTEP_END'
+    []
+
+    [compute_alpha]
+        type = MaterialRealAux
+        variable = alpha_var
+        property = alpha
+        execute_on = 'TIMESTEP_END'
+    []
+
+    [compute_pe]
+        type = ParsedAux
+        variable = Pe_number
+        coupled_variables = 'speed_magnitude alpha_var'
+        constant_names = 'L'
+        constant_expressions = '0.02'
+        expression = 'speed_magnitude * L / alpha_var'
+        execute_on = 'TIMESTEP_END'
     []
 []
 
-#Condições de contorno - tanto para equações quanto para variáveis
+
+# Operações das componentes da equação -------------------------------------------------
+
+[Kernels]
+
+    # Conservação de Massa - equação da continuidade
+    [mass]
+        type = INSMass
+        variable = p
+        pressure = p
+        u = u
+        v = v
+        use_displaced_mesh = false
+    []
+
+    # Equação de momento de Navier-Stokes
+    [x_momentum]
+        type = INSMomentumLaplaceForm
+        variable = u
+        component = 0
+        pressure = p
+        u = u
+        v = v
+        mu_name = mu
+        rho_name = rho
+    []
+    [y_momentum]
+        type = INSMomentumLaplaceForm
+        variable = v
+        component = 1
+        pressure = p
+        u = u
+        v = v
+        mu_name = mu
+        rho_name = rho
+    []
+
+    # Equação de Energia
+    [energy]
+        type = INSTemperature
+        variable = T
+        u = u
+        rho_name = rho
+        cp_name = cp
+        v = v
+        k_name = k
+    []
+[]
+
+
+# Condições de contorno  -----------------------------------------------------------
+
 [BCs]
-    [massa_en]
-        type = INSFEFluidMassBC
+
+    # Pressão
+    [p_reference]   # Pressão na entrada do canal
+        type = DirichletBC
         variable = p
         boundary = 'left'
+        value = 101325
     []
 
-    [mass_sai]
-        type = INSFEFluidMassBC
-        variable = p
-        boundary = 'right'
-    []
-
-    [Vx_in]
-        type = INSFEFluidMomentumBC
-        variable = Vx
+    
+    # Velocidade 
+    [inlet_u]   # Velocidade em x na entrada do canal
+        type = FunctionDirichletBC
+        variable = u
         boundary = 'left'
-        component = 0
-        
-        v_fn = 1
+        function = 'inlet_profile'  #Perfil de velocidade definido em Functions
     []
-
-    [Vx_sai]
-        type = INSFEFluidMomentumBC
-        variable = Vx
-        boundary = 'right'
-        component = 0
-        p_fn = 1e5
+    [no_slip_top]   # Fluído na parede superior
+        type = DirichletBC
+        variable = u
+        boundary = 'top'
+        value = 0
     []
-
-    [Vx_paredes]
-        type = INSFEFluidWallMomentumBC
-        variable = Vx
-        boundary = 'top bottom'
-        component = 0
+    [no_slip_bottom] # Fluído na parede inferior
+        type = DirichletBC
+        variable = u
+        boundary = 'bottom'
+        value = 0
     []
-
-    [Vy_in]
-        type = INSFEFluidMomentumBC
-        variable = Vy
+    [v_inlet]   # Velocidade em y na entrada do canal
+        type = DirichletBC
+        variable = v
         boundary = 'left'
-        component = 1
-        v_fn = 1
+        value = 0
     []
-
-    [Vy_sai]
-        type = INSFEFluidMomentumBC
-        variable = Vy
+    [v_outlet]  # Velocidade em y na saída do canal
+        type = INSMomentumNoBCBCLaplaceForm     # Condição de contorno natural
+        variable = v
         boundary = 'right'
+        u = u
+        v = v
+        mu_name = mu
+        pressure = p
+        rho_name = rho
         component = 1
-        p_fn = 1e5
+        gravity = '0 -9.8 0'
+    []
+    [v_top]     # Velocidade em y na parede superior
+        type = DirichletBC
+        variable = v
+        boundary = 'top'
+        value = 0
+    []
+    [v_bottom]  # Velocidade em y na parede inferior
+        type = DirichletBC
+        variable = v
+        boundary = 'bottom'
+        value = 0
     []
 
-    [Vy_paredes]
-        type = INSFEFluidWallMomentumBC
-        variable = Vy
-        boundary = 'top bottom'
-        component = 1
-    []
-
-    [slipwall]
-        type = INSFEMomentumFreeSlipBC
-        boundary = 'top bottom'
-        variable = Vx
-        u = Vx
-        v = Vy
-    []
-
-    [T_en] #Definição da temperatura à esquerda da placa
-        type = INSFEFluidEnergyBC
+    
+    # Temperatura
+    [inlet_T]   # Temperatura na entrada do canal
+        type = DirichletBC
         variable = T
         boundary = 'left'
-        T_fn = 630
-        
+        value = 300
     []
-
-    [T_sai] #Definição da temperatura à direita da placa
-        type = INSFEFluidEnergyBC
+    [outlet_T]   # Temperatura na saída do canal
+        type = DirichletBC
         variable = T
         boundary = 'right'
-        T_fn = 630
-        
+        value = 350
     []
+    [wall_T]
+        type = FunctionDirichletBC
+        variable = T
+        boundary = 'top bottom'
+        function = T_wall_step
+    []
+
 []
+
+
+# Definição da matrix de pré-condicionamento ----------------------------------------
 
 [Preconditioning]
-    [SMP_PJFNK]
-      type = FDP
-      full = true
-      solve_type = 'PJFNK'
+    [SMP_BJACOBI]
+        type = SMP              # Single Matrix Preconditioner
+        full = true             # Constrói um Jacobiano completo
+        solve_type = 'NEWTON'   # Problema não linear
     []
 []
 
-#Modo se execução da simulação - pode incluir incremento de tempo e comportamentos
+
+# Forma de execução da simulação -----------------------------------------------------
+
 [Executioner]
-    type = Transient
+    type = Steady   # Estado estacionário
+    solve_type = NEWTON # Não linear
 
-    dt = 0.2
-    dtmin = 1.e-6
-    [TimeStepper]
-        type = IterationAdaptiveDT
-        growth_factor = 1.25
-        optimal_iterations = 15
-        linear_iteration_ratio = 100
-        dt = 0.1
+    # Opções do kit de ferrametas para problemas científicos
+    petsc_options_iname = '-pc_type -pc_factor_shift_type -pc_factor_mat_solver_type -ksp_type -ksp_rtol -ksp_atol -snes_linesearch_type'
+    petsc_options_value = 'lu NONZERO mumps gmres 1e-4 1e-8 basic'
+    
+    # Número de iterações
+    nl_max_its = 200    #não linear
+    l_max_its = 1000    #linear
 
-        cutback_factor = 0.5
-        cutback_factor_at_failure = 0.5
+    # Controle de tolerâncias
+    nl_rel_tol = 1e-5
+    nl_abs_tol = 1e-7
+    l_tol = 1e-4
+[]
+
+
+# Pós-processamento ------------------------------------------------------------------
+
+[Postprocessors]
+    [residual_u]    # Rastreia a convergência da variável u
+        type = ElementExtremeValue
+        variable = u
+        value_type = max
     []
-    dtmax = 25
-
-    petsc_options_iname = '-pc_type -ksp_gmres_restart'
-    petsc_options_value = 'lu 100'
-
-    nl_rel_tol = 1e-10
-    nl_abs_tol = 1e-8
-    nl_max_its = 12
-
-    l_tol = 1e-5
-    l_max_its = 100
-
-    start_time = 0.0
-    end_time = 500
-    num_steps = 2
+    [residual_v]    # Rastreia a convergência da variável v
+        type = ElementExtremeValue
+        variable = v
+        value_type = max
+    []
+    [max_speed]
+        type = ElementExtremeValue
+        variable = speed_magnitude
+        value_type = max
+    []
+    [avg_speed]
+        type = ElementAverageValue
+        variable = speed_magnitude
+    []
+    [max_pe]
+        type = ElementExtremeValue
+        variable = Pe_number
+        value_type = max
+    []
+    [avg_pe]
+        type = ElementAverageValue
+        variable = Pe_number
+    []
+     
 []
-  
-#Declara a forma como a solução será exportada
+
+
+# Exportação dos resultados ---------------------------------------------------------
+
 [Outputs]
-    exodus = true #Exporta os resultados num arquivo com o formato ".e"
+    exodus = true   #exporta no formato .e para visualização no Paraview
+    [csv]
+        type = CSV
+        file_base = 'pe1_results'
+        execute_on = 'FINAL'
+    []
 []
-  
+        
