@@ -69,6 +69,14 @@ T_right = 350 # Temperatura na parede
         family = MONOMIAL
         order = CONSTANT
     []
+    [grad_u_x]
+        order = FIRST
+        family = MONOMIAL
+    []
+    [grad_u_y]
+        order = FIRST
+        family = MONOMIAL
+    []
 []
 
 
@@ -151,9 +159,21 @@ T_right = 350 # Temperatura na parede
         variable = Pe_number
         coupled_variables = 'speed_magnitude alpha_var'
         constant_names = 'L'
-        constant_expressions = '0.02'
+        constant_expressions = '0.01'
         expression = 'speed_magnitude * L / alpha_var'
         execute_on = 'TIMESTEP_END'
+    []
+    [grad_u_x_aux]
+        type = VariableGradientComponent
+        variable = grad_u_x
+        component = x
+        gradient_variable = u
+    []
+    [grad_u_y_aux]
+        type = VariableGradientComponent
+        variable = grad_u_y
+        component = y
+        gradient_variable = u
     []
 []
 
@@ -203,6 +223,13 @@ T_right = 350 # Temperatura na parede
         cp_name = cp
         v = v
         k_name = k
+    []
+    [visc_heat]
+        type = CoupledForce
+        variable = T
+        v = 'grad_u_y'
+        coef = ${mu}
+        extra_vector_tags = 'residual'
     []
 []
 
@@ -357,8 +384,25 @@ T_right = 350 # Temperatura na parede
         type = ElementAverageValue
         variable = Pe_number
     []
+    [center_pe]
+        type = PointValue
+        variable = Pe_number
+        point = '0.25 0 0'
+    []
      
 []
+
+[VectorPostprocessors]
+    [temp_profile]
+        type = LineValueSampler
+        start_point = '0.25 -0.01 0'
+        end_point = '0.25 0.01 0'
+        num_points = 100
+        variable = 'T'
+        sort_by = 'y'
+    []
+[]
+
 
 
 # Exportação dos resultados ---------------------------------------------------------
