@@ -77,6 +77,10 @@ T_right = 350 # Temperatura na parede
         order = FIRST
         family = MONOMIAL
     []
+    [viscous_heat]
+        family = MONOMIAL
+        order = CONSTANT
+    []
 []
 
 
@@ -93,7 +97,7 @@ T_right = 350 # Temperatura na parede
         prop_names = 'alpha'
         prop_values = '${fparse k/(rho*cp)}'
     []
-    
+      
 []
 
 
@@ -105,7 +109,7 @@ T_right = 350 # Temperatura na parede
     [inlet_profile]                     # Perfil de velocidade na entrada
         type = ParsedFunction
         symbol_names = 'U_avg L'
-        symbol_values = '7.17e-5 0.01'
+        symbol_values = '7.15e-6 0.01'
         expression = '1.5 * U_avg * (1 - (y/L)^2)'  # Perfil parabólico
     []
 
@@ -160,7 +164,7 @@ T_right = 350 # Temperatura na parede
         coupled_variables = 'speed_magnitude alpha_var'
         constant_names = 'L'
         constant_expressions = '0.01'
-        expression = 'speed_magnitude * L / alpha_var'
+        expression = '2 * speed_magnitude * L / alpha_var'
         execute_on = 'TIMESTEP_END'
     []
     [grad_u_x_aux]
@@ -174,6 +178,15 @@ T_right = 350 # Temperatura na parede
         variable = grad_u_y
         component = y
         gradient_variable = u
+    []
+    [compute_viscous_heat]
+        type = ParsedAux
+        variable = viscous_heat
+        coupled_variables = 'grad_u_y'
+        constant_names = 'mu'
+        constant_expressions = '${mu}'
+        expression = 'mu * grad_u_y * grad_u_y'
+        execute_on = 'TIMESTEP_END'
     []
 []
 
@@ -227,9 +240,8 @@ T_right = 350 # Temperatura na parede
     [visc_heat]
         type = CoupledForce
         variable = T
-        v = 'grad_u_y'
-        coef = ${mu}
-        extra_vector_tags = 'residual'
+        v = 'viscous_heat'
+        coef = 1.0
     []
 []
 
@@ -389,7 +401,9 @@ T_right = 350 # Temperatura na parede
         variable = Pe_number
         point = '0.25 0 0'
     []
-     
+
+
+        
 []
 
 [VectorPostprocessors]
@@ -401,6 +415,7 @@ T_right = 350 # Temperatura na parede
         variable = 'T'
         sort_by = 'y'
     []
+
 []
 
 
